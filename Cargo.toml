@@ -1,0 +1,10 @@
+[package]
+name = "scraper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+thirtyfour = "0.34.0"
+serde_json = "1.0.133"
+serde = "1.0.215"
