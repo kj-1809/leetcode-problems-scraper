@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::time::Duration;
 use thirtyfour::prelude::*;
 
@@ -10,6 +13,7 @@ struct Problem {
     difficulty: String,
     url: String,
     description: String,
+    is_premium: bool,
 }
 
 #[tokio::main]
@@ -17,8 +21,9 @@ async fn main() -> WebDriverResult<()> {
     let caps = DesiredCapabilities::chrome();
     let driver = WebDriver::new("http://localhost:59890", caps).await?;
     let mut problems: Vec<Problem> = Vec::new();
-
-    for page in 2..69 {
+        
+    // fetch all problems
+    for page in 1..69 {
         driver
             .goto(format!("https://leetcode.com/problemset?page={}", page))
             .await?;
@@ -41,7 +46,7 @@ async fn main() -> WebDriverResult<()> {
 
             let problem_name_text = target_element_divs_name.text().await?;
             let problem_split: Vec<&str> = problem_name_text.split(".").collect();
-            let problem_id: u32 = problem_split[0].parse().expect("Not a valid number");
+            let problem_id: u32 = problem_split[0].parse().unwrap_or(0);
             let problem_name: &str = &problem_split[1][1..];
 
             let problem_url_path = target_element_divs_name.attr("href").await?.unwrap();
@@ -51,9 +56,11 @@ async fn main() -> WebDriverResult<()> {
 
             let problem_acceptance_string = target_element_divs_acceptance.text().await?;
             let problem_acceptance_str = &problem_acceptance_string[0..4];
-            let problem_acceptance: f32 = problem_acceptance_str
-                .parse()
-                .expect("Failed to load acceptance");
+            // let problem_acceptance: f32 = problem_acceptance_str
+            //     .parse()
+            //     .expect("Failed to load acceptance");
+
+            let problem_acceptance: f32 = problem_acceptance_str.parse().unwrap_or(0.0);
 
             let scraped_problem = Problem {
                 id: problem_id,
@@ -62,26 +69,45 @@ async fn main() -> WebDriverResult<()> {
                 description: "".to_string(),
                 acceptance: problem_acceptance,
                 url: problem_url,
+                is_premium: false,
             };
             problems.push(scraped_problem);
         }
-
-        for problem in &mut problems {
-            let _problem_page = driver.goto(&problem.url).await?;
-            std::thread::sleep(Duration::from_secs(8));
-
-            let problem_statement_divs = driver
-                .find_all(By::Css(
-                    ".flexlayout__layout > div[data-layout-path=\"/ts0/t0\"] > div > div > div",
-                ))
-                .await?;
-            let description = problem_statement_divs[2].text().await?;
-            problem.description = description;
+    }
+    
+    // fetch descriptions
+    for problem in &mut problems {
+        let _problem_page = driver.goto(&problem.url).await?;
+        std::thread::sleep(Duration::from_secs(8));
+        
+        let problem_statement_divs = driver
+            .find_all(By::Css(
+                ".flexlayout__layout > div[data-layout-path=\"/ts0/t0\"] > div > div > div",
+            ))
+            .await?;
+        
+        if problem_statement_divs.len() < 3 {
+            continue;
         }
+        let description = problem_statement_divs[2].text().await?;
+        problem.description = description;
+        if problem.description.len() == 0 {
+            problem.is_premium = true;
+        }
+        println!("Problem with {} parsed.", problem.id);
+    }
 
-        let json = serde_json::to_string(&problems)?;
+    let json = serde_json::to_string(&problems)?;
 
-        println!("{}", json);
+    let path = Path::new("leetcode-questions.json");
+    let mut file = match File::create(&path) {
+        Err(why) => panic!("Error occured coz {}", why),
+        Ok(file) => file,
+    };
+
+    match file.write_all(json.as_bytes()) {
+        Err(why) => println!("Error while writing to the file coz {why}"),
+        Ok(_) => println!("Successfully wrote to the file"),
     }
 
     driver.quit().await?;
