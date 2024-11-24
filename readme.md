@@ -11,7 +11,6 @@ A simple leetcode scraper that scrapes all the problems on leetcode using Web Au
 
 clone the repo and run the following : 
 
-'''
+```
 cargo run
-'''
 
